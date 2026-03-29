@@ -432,12 +432,14 @@ export default function App() {
           
           {/* Scale Indicator */}
           {dynamicScale && (
-             <div className="absolute bottom-10 left-10 bg-white/60 backdrop-blur-[30px] px-4 py-3 rounded-2xl shadow-[0_8px_24px_rgba(0,133,208,0.1)] border border-white/80 z-20 flex items-center gap-3">
-                <div className="h-1 bg-[#0085D0]/60 relative rounded-full" style={{ width: `${dynamicScale.width}px` }}>
-                  <div className="absolute -top-1 -left-0.5 w-1 h-3 bg-[#0085D0] rounded-full"></div>
-                  <div className="absolute -top-1 -right-0.5 w-1 h-3 bg-[#0085D0] rounded-full"></div>
+             <div className="absolute bottom-10 left-10 z-20 flex flex-col items-center pointer-events-none">
+                <div className="text-xs font-bold text-[#0085D0] mb-1.5 bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-md shadow-sm border border-[#0085D0]/20">
+                  {dynamicScale.label}
                 </div>
-                <span className="text-xs font-bold text-[#0085D0]">{dynamicScale.label}</span>
+                <div className="h-1 bg-[#0085D0]/80 relative rounded-full" style={{ width: `${dynamicScale.width}px` }}>
+                  <div className="absolute -top-1.5 -left-0.5 w-1 h-4 bg-[#0085D0] rounded-full"></div>
+                  <div className="absolute -top-1.5 -right-0.5 w-1 h-4 bg-[#0085D0] rounded-full"></div>
+                </div>
              </div>
           )}
         </div>

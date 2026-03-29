@@ -136,11 +136,11 @@ export function drawHeatmap(
       } else if (sig < 0.6) {
         const t = (sig - 0.4) / 0.2;
         r = 0; g = 255; b = 255 * (1 - t); // Cyan to Green
-      } else if (sig < 0.8) {
-        const t = (sig - 0.6) / 0.2;
+      } else if (sig < 0.7) {
+        const t = (sig - 0.6) / 0.1;
         r = 255 * t; g = 255; b = 0; // Green to Yellow
       } else {
-        const t = Math.min(1, (sig - 0.8) / 0.2);
+        const t = Math.min(1, (sig - 0.7) / 0.3);
         r = 255; g = 255 * (1 - t); b = 0; // Yellow to Red
       }
     }
