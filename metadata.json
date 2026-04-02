@@ -1,5 +1,7 @@
 {
   "name": "智绘WiFi - 信号覆盖分析专家",
   "description": "基于AI的WiFi安装位置分析工具，支持户型图上传、智能推荐路由器部署方案、可视化热力图展示及手动调整。",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
