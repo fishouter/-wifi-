@@ -344,20 +344,23 @@ export const defaultAnalyses: Record<string, any> = {
   '1': { 
     recommendedCount: 2, 
     equipment: '推荐使用Wi-Fi 6 Mesh路由器套装（2只装）',
-    routers: [{id: 'r1', x: 25, y: 70, type: 'mesh'}, {id: 'r2', x: 65, y: 30, type: 'mesh'}], 
+    routers: [
+      {id: 'r1', x: 25, y: 70, type: 'mesh', locationDescription: '客厅中心，覆盖主要活动区域及阳台'}, 
+      {id: 'r2', x: 65, y: 30, type: 'mesh', locationDescription: '休闲区/走廊，覆盖主卧、次卫及厨房'}
+    ], 
     explanation: {
-      priority: '该户型结构复杂，墙体较多，重点保障主卧、次卧及客厅的高频用网需求。',
-      strategy: '建议采用Mesh组网，一台放置在客厅覆盖公共区域和阳台，另一台放置在休闲区或走廊覆盖主卧和次卧，确保全屋无死角。',
+      priority: '该3室2厅2卫户型结构复杂，墙体较多，重点保障主卧、次卧及客厅的高频用网需求，同时兼顾休闲区。',
+      strategy: '建议采用Mesh组网，一台放置在客厅覆盖公共区域和阳台，另一台放置在休闲区或走廊覆盖主卧、次卧和厨房，确保全屋无死角。',
       summary: '双节点Mesh组网能有效解决多墙体带来的信号衰减问题，实现全屋漫游。'
     }
   },
   '2': { 
     recommendedCount: 1, 
     equipment: '推荐使用单台高功率Wi-Fi 6路由器',
-    routers: [{id: 'r1', x: 40, y: 50, type: 'high-power'}], 
+    routers: [{id: 'r1', x: 40, y: 50, type: 'high-power', locationDescription: '客餐厅中心，靠近主次卧过道'}], 
     explanation: {
-      priority: '两居室户型，重点覆盖客餐厅及主卧。',
-      strategy: '建议将路由器放置在客厅靠近两间卧室过道的位置。这样信号穿透一堵墙即可到达各个卧室，保证整体覆盖。',
+      priority: '该2室1厅1卫户型，重点覆盖客餐厅及主次卧。',
+      strategy: '建议将路由器放置在客餐厅靠近两间卧室过道的位置。这样信号穿透一堵墙即可到达主卧和次卧，保证整体覆盖。',
       summary: '单台高性能路由居中放置即可满足两居室的日常需求。'
     }
   },
@@ -394,10 +397,13 @@ export const defaultAnalyses: Record<string, any> = {
   '6': { 
     recommendedCount: 2, 
     equipment: '1主1从 (联通FTTO企业级网关+AP)',
-    routers: [{id: 'r1', x: 30, y: 50, type: 'ftto-main'}, {id: 'r2', x: 75, y: 50, type: 'ftto-sub'}], 
+    routers: [
+      {id: 'r1', x: 30, y: 50, type: 'ftto-main', locationDescription: '开放办公区中心，满足高密接入'}, 
+      {id: 'r2', x: 75, y: 50, type: 'ftto-sub', locationDescription: '会议室与经理室交界处，保障独立空间覆盖'}
+    ], 
     explanation: {
-      priority: '小型办公区分为开放区和独立办公室，重点保障高密接入和会议室稳定。',
-      strategy: '开放区放置一台高带机量AP，独立办公室区域放置另一台，确保会议和办公网络稳定。',
+      priority: '该小型办公区分为开放区、会议室和经理室，重点保障开放区高密接入和会议室稳定。',
+      strategy: '开放办公区放置一台高带机量主网关，会议室和经理室区域放置一台从网关，确保会议和办公网络稳定。',
       summary: '主从架构满足企业级高并发和稳定性要求。'
     }
   },

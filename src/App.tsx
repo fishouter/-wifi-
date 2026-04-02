@@ -32,24 +32,67 @@ const HeatmapOverlay = ({ routers, visible, imageUrl, widthMeters }: { routers: 
   );
 };
 
+const LoadingOverlay = ({ isAnalyzing }: { isAnalyzing: boolean }) => {
+  const [messageIndex, setMessageIndex] = useState(0);
+  const messages = [
+    "AI 正在深度分析户型结构...",
+    "正在识别墙体与障碍物...",
+    "正在计算最优信号覆盖模型...",
+    "正在生成智能组网方案...",
+    "预计需要 15-30 秒，请稍候..."
+  ];
+
+  useEffect(() => {
+    if (!isAnalyzing) return;
+    const interval = setInterval(() => {
+      setMessageIndex(prev => (prev + 1) % messages.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isAnalyzing, messages.length]);
+
+  if (!isAnalyzing) return null;
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+      <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full border border-[#0085D0]/20">
+        <div className="relative w-16 h-16 mb-6">
+          <div className="absolute inset-0 border-4 border-[#0085D0]/20 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-[#0085D0] rounded-full border-t-transparent animate-spin"></div>
+          <Wifi className="absolute inset-0 m-auto w-6 h-6 text-[#0085D0] animate-pulse" />
+        </div>
+        <h3 className="text-lg font-bold text-slate-800 mb-2">智能分析中</h3>
+        <p className="text-sm text-slate-500 text-center h-5 transition-all duration-300">
+          {messages[messageIndex]}
+        </p>
+        <div className="w-full bg-slate-100 h-1.5 rounded-full mt-6 overflow-hidden">
+          <div className="h-full bg-[#0085D0] animate-progress rounded-full" style={{ width: '0%' }}></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [selectedPlan, setSelectedPlan] = useState<FloorPlan>(defaultFloorPlans[0]);
   const [routers, setRouters] = useState<RouterNode[]>(defaultAnalyses['1'].routers);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(defaultAnalyses['1']);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
-  const [newRouterType, setNewRouterType] = useState<'standard' | 'high-power' | 'mesh'>('standard');
+  const [newRouterType, setNewRouterType] = useState<'standard' | 'high-power' | 'mesh' | 'ftto-main' | 'ftto-sub'>('standard');
   const [parentSize, setParentSize] = useState({ width: 800, height: 600 });
   const [aspectRatio, setAspectRatio] = useState(4/3);
   const containerRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const analysisCache = useRef<Record<string, any>>({});
 
   const [scenario, setScenario] = useState<'home' | 'enterprise'>('home');
   const [modelType, setModelType] = useState<'gemini-flash' | 'gemini-pro' | 'qwen'>('gemini-flash');
+  const [planTier, setPlanTier] = useState<'economical' | 'standard' | 'premium'>('standard');
 
   useEffect(() => {
     // When scenario changes, auto-select the first plan of that scenario
@@ -57,6 +100,7 @@ export default function App() {
     if (firstPlan && selectedPlan.scenario !== scenario) {
       handleSelectPlan(firstPlan);
     }
+    setNewRouterType(scenario === 'enterprise' ? 'ftto-main' : 'standard');
   }, [scenario]);
 
   useEffect(() => {
@@ -132,6 +176,7 @@ export default function App() {
 
   const handleSelectPlan = (plan: FloorPlan) => {
     setSelectedPlan(plan);
+    setError(null);
     if (plan.type === 'default') {
       const analysis = defaultAnalyses[plan.id];
       setAnalysisResult(analysis);
@@ -159,14 +204,19 @@ export default function App() {
       x: 50,
       y: 50,
       type: isMain 
-        ? (scenario === 'enterprise' ? 'fttr-main' : 'standard')
-        : (scenario === 'enterprise' ? 'fttr-sub' : 'mesh'),
+        ? (scenario === 'enterprise' ? 'ftto-main' : 'standard')
+        : (scenario === 'enterprise' ? 'ftto-sub' : 'mesh'),
       locationDescription: '手动新增节点'
     };
     setRouters([...routers, newRouter]);
   };
 
   const handleRemoveRouterByType = (isMain: boolean) => {
+    if (isMain && scenario === 'enterprise' && mainRouters.length <= 1) {
+      alert('企业模式下，起码要有一个主设备。');
+      return;
+    }
+
     const typesToRemove = isMain 
       ? ['standard', 'high-power', 'fttr-main', 'ftto-main']
       : ['mesh', 'fttr-sub', 'ftto-sub'];
@@ -201,7 +251,24 @@ export default function App() {
     });
   };
 
-  const runAnalysis = async (imageUrl: string, mimeType: string, isRefine = false) => {
+  const runAnalysis = async (imageUrl: string, mimeType: string, isRefine = false, overrideTier?: 'economical' | 'standard' | 'premium') => {
+    const activeTier = overrideTier || planTier;
+    setError(null);
+    
+    // Create a robust pseudo-hash for the image to ensure same images hit the cache
+    const imageHash = `${imageUrl.length}_${imageUrl.substring(0, 50)}_${imageUrl.substring(Math.floor(imageUrl.length / 2), Math.floor(imageUrl.length / 2) + 50)}_${imageUrl.substring(imageUrl.length - 50)}`;
+    const cacheKey = !isRefine ? `${imageHash}_${scenario}_${modelType}_${enterpriseName}_${selectedPlan.widthMeters}_${activeTier}_${mainPrice}_${subPrice}` : null;
+
+    if (cacheKey && analysisCache.current[cacheKey]) {
+      const cachedResult = analysisCache.current[cacheKey];
+      setAnalysisResult(cachedResult);
+      setRouters(cachedResult.routers);
+      if (cachedResult.widthMeters) {
+        setSelectedPlan(prev => ({ ...prev, widthMeters: cachedResult.widthMeters }));
+      }
+      return;
+    }
+
     if (isRefine) {
       setIsRefining(true);
     } else {
@@ -228,11 +295,20 @@ export default function App() {
         enterpriseName, 
         isRefine ? feedback : '', 
         isRefine ? analysisResult : null,
-        selectedPlan.widthMeters
+        selectedPlan.widthMeters,
+        activeTier,
+        mainPrice,
+        subPrice
       );
       const routersWithIds = result.routers.map((r: any, i: number) => ({ ...r, id: `r${Date.now()}-${i}` }));
-      setAnalysisResult({ ...result, routers: routersWithIds });
+      
+      const finalResult = { ...result, routers: routersWithIds };
+      setAnalysisResult(finalResult);
       setRouters(routersWithIds);
+      
+      if (cacheKey) {
+        analysisCache.current[cacheKey] = finalResult;
+      }
       
       if (result.widthMeters) {
         setSelectedPlan(prev => ({ ...prev, widthMeters: result.widthMeters }));
@@ -240,8 +316,14 @@ export default function App() {
       if (isRefine) {
         setFeedback('');
       }
+      
+      // Auto adjust to 50% ratio
+      setRightSidebarWidth(window.innerWidth / 2);
     } catch (error: any) {
       console.error(error);
+      const errorMessage = error.message || String(error);
+      setError(`分析失败: ${errorMessage.includes('timeout') ? '请求超时，请重试' : errorMessage}`);
+      
       if (!isRefine) {
         const fallback = {
           recommendedCount: 1,
@@ -250,7 +332,7 @@ export default function App() {
           explanation: {
             priority: '分析失败',
             strategy: '请手动调整路由器位置。',
-            summary: `错误信息: ${error.message || String(error)}`
+            summary: `错误信息: ${errorMessage}`
           }
         };
         setAnalysisResult(fallback);
@@ -265,20 +347,50 @@ export default function App() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setError(null);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
-      const newPlan: FloorPlan = {
-        id: 'uploaded-' + Date.now(),
-        name: file.name,
-        imageUrl: base64,
-        type: 'uploaded',
-        widthMeters: 10,
-        scenario: scenario
+      
+      // Resize image to max 1024x1024 to speed up AI processing and avoid timeouts
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxSize = 1024;
+        
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          } else {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const resizedBase64 = canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.8);
+          
+          const newPlan: FloorPlan = {
+            id: 'uploaded-' + Date.now(),
+            name: file.name,
+            imageUrl: resizedBase64,
+            type: 'uploaded',
+            widthMeters: 10,
+            scenario: scenario
+          };
+          setSelectedPlan(newPlan);
+          await runAnalysis(resizedBase64, file.type === 'image/png' ? 'image/png' : 'image/jpeg');
+        }
       };
-      setSelectedPlan(newPlan);
-      await runAnalysis(base64, file.type);
+      img.src = base64;
     };
     reader.readAsDataURL(file);
     e.target.value = ''; // Reset input
@@ -345,6 +457,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans relative">
+      <LoadingOverlay isAnalyzing={isAnalyzing} />
       {/* Background blur decorative elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#0085D0]/15 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#0085D0]/10 rounded-full blur-[100px] pointer-events-none" />
@@ -355,7 +468,7 @@ export default function App() {
           <div className="p-6 border-b border-white/60 bg-white/40 backdrop-blur-md">
           <h1 className="text-2xl font-bold text-[#0085D0] flex items-center gap-2">
             <Wifi className="w-7 h-7" />
-            智绘WiFi
+            新大陆智绘解决方案
           </h1>
           <p className="text-xs text-slate-500 mt-1">信号覆盖分析专家</p>
         </div>
@@ -476,8 +589,10 @@ export default function App() {
                         className="w-16 text-right text-sm font-bold text-[#0085D0] bg-transparent focus:outline-none"
                         value={selectedPlan.widthMeters ? Math.round(selectedPlan.widthMeters * (selectedPlan.widthMeters / aspectRatio)) : 0}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value);
+                          let val = parseFloat(e.target.value);
                           if (!isNaN(val) && val > 0) {
+                            const maxArea = scenario === 'home' ? 2000 : 100000;
+                            if (val > maxArea) val = maxArea;
                             setSelectedPlan({ ...selectedPlan, widthMeters: Math.sqrt(val * aspectRatio) });
                           }
                         }}
@@ -488,12 +603,14 @@ export default function App() {
                   <input 
                     type="range" 
                     min={scenario === 'home' ? 30 : 100}
-                    max={Math.max(scenario === 'home' ? 500 : 20000, Math.round((selectedPlan.widthMeters ? Math.round(selectedPlan.widthMeters * (selectedPlan.widthMeters / aspectRatio)) : 0) * 1.5))}
+                    max={scenario === 'home' ? 2000 : 100000}
                     step="10"
                     value={selectedPlan.widthMeters ? Number((selectedPlan.widthMeters * (selectedPlan.widthMeters / aspectRatio)).toFixed(1)) : 0}
                     onChange={(e) => {
-                      const val = parseFloat(e.target.value);
+                      let val = parseFloat(e.target.value);
                       if (!isNaN(val) && val > 0) {
+                        const maxArea = scenario === 'home' ? 2000 : 100000;
+                        if (val > maxArea) val = maxArea;
                         setSelectedPlan({ ...selectedPlan, widthMeters: Math.sqrt(val * aspectRatio) });
                       }
                     }}
@@ -514,7 +631,7 @@ export default function App() {
       </div>
 
       {/* Center: Canvas Area */}
-      <div className="flex-1 flex flex-col relative z-10">
+      <div className="flex-1 flex flex-col relative z-10 min-w-0 overflow-hidden">
         <div className="p-4 flex justify-between items-center border-b border-white/60 bg-white/60 backdrop-blur-md shadow-[0_4px_24px_0_rgba(0,133,208,0.02)]">
           <div className="flex items-center gap-4">
             <button 
@@ -547,8 +664,6 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <option value="fttr-main">FTTR 主路由</option>
-                  <option value="fttr-sub">FTTR 从路由</option>
                   <option value="ftto-main">FTTO 主网关</option>
                   <option value="ftto-sub">FTTO 从网关</option>
                   <option value="high-power">高密AP</option>
@@ -564,8 +679,6 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  {newRouterType === 'fttr-main' && '企业级全光主路由，部署于核心机房。'}
-                  {newRouterType === 'fttr-sub' && '企业级全光从路由，光纤直达各办公区。'}
                   {newRouterType === 'ftto-main' && '企业级FTTO主网关，大带宽高并发。'}
                   {newRouterType === 'ftto-sub' && '企业级FTTO从网关/AP，无缝漫游。'}
                   {newRouterType === 'high-power' && '高密AP，适合大面积开阔空间。'}
@@ -703,8 +816,6 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <button onClick={(e) => { e.stopPropagation(); updateRouterType(router.id, 'fttr-main'); }} className={`flex items-center gap-2 text-xs font-medium p-1.5 rounded-lg transition-colors ${router.type === 'fttr-main' ? 'bg-[#0085D0]/10 text-[#0085D0]' : 'text-slate-700 hover:bg-[#0085D0]/5 hover:text-[#0085D0]'}`}><Server className="w-3.5 h-3.5" />FTTR 主</button>
-                        <button onClick={(e) => { e.stopPropagation(); updateRouterType(router.id, 'fttr-sub'); }} className={`flex items-center gap-2 text-xs font-medium p-1.5 rounded-lg transition-colors ${router.type === 'fttr-sub' ? 'bg-[#0085D0]/10 text-[#0085D0]' : 'text-slate-700 hover:bg-[#0085D0]/5 hover:text-[#0085D0]'}`}><Wifi className="w-3.5 h-3.5" />FTTR 从</button>
                         <button onClick={(e) => { e.stopPropagation(); updateRouterType(router.id, 'ftto-main'); }} className={`flex items-center gap-2 text-xs font-medium p-1.5 rounded-lg transition-colors ${router.type === 'ftto-main' ? 'bg-[#0085D0]/10 text-[#0085D0]' : 'text-slate-700 hover:bg-[#0085D0]/5 hover:text-[#0085D0]'}`}><Server className="w-3.5 h-3.5" />FTTO 主</button>
                         <button onClick={(e) => { e.stopPropagation(); updateRouterType(router.id, 'ftto-sub'); }} className={`flex items-center gap-2 text-xs font-medium p-1.5 rounded-lg transition-colors ${router.type === 'ftto-sub' ? 'bg-[#0085D0]/10 text-[#0085D0]' : 'text-slate-700 hover:bg-[#0085D0]/5 hover:text-[#0085D0]'}`}><Wifi className="w-3.5 h-3.5" />FTTO 从</button>
                         <button onClick={(e) => { e.stopPropagation(); updateRouterType(router.id, 'high-power'); }} className={`flex items-center gap-2 text-xs font-medium p-1.5 rounded-lg transition-colors ${router.type === 'high-power' ? 'bg-[#0085D0]/10 text-[#0085D0]' : 'text-slate-700 hover:bg-[#0085D0]/5 hover:text-[#0085D0]'}`}><Radio className="w-3.5 h-3.5" />高密AP</button>
@@ -746,25 +857,6 @@ export default function App() {
                 </div>
              </div>
           )}
-
-          {/* Enterprise Name Input */}
-          {scenario === 'enterprise' && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 w-80">
-              <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-[0_8px_24px_rgba(0,133,208,0.15)] border border-white/60 flex flex-col gap-2">
-                <label className="text-xs font-bold text-[#0085D0] flex items-center gap-2">
-                  <div className="w-1 h-3 bg-[#0085D0] rounded-full"></div>
-                  客户/企业名称
-                </label>
-                <input 
-                  type="text" 
-                  value={enterpriseName}
-                  onChange={(e) => setEnterpriseName(e.target.value)}
-                  placeholder="输入企业名称以定制方案"
-                  className="w-full bg-white/60 border border-white/80 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0085D0]/50 shadow-inner"
-                />
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -778,18 +870,31 @@ export default function App() {
 
       {/* Right Sidebar: Analysis */}
       <div 
-        className="shrink-0 border-l border-white/60 bg-white/60 backdrop-blur-md shadow-[-4px_0_24px_0_rgba(0,133,208,0.05)] z-10 flex flex-col"
+        className="shrink-0 border-l border-white/60 bg-white/60 backdrop-blur-md shadow-[-4px_0_24px_0_rgba(0,133,208,0.05)] z-10 flex flex-col overflow-hidden"
         style={{ width: `${rightSidebarWidth}px` }}
       >
         <div className="p-6 border-b border-white/60 bg-white/40 backdrop-blur-md">
           <h2 className="text-lg font-bold text-slate-800">智能化解决方案</h2>
         </div>
         
-        <div className="p-6 flex-1 overflow-y-auto">
-          {isAnalyzing || isRefining ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4 bg-white/40 backdrop-blur-md rounded-3xl border border-white/60 shadow-[0_8px_32px_0_rgba(0,133,208,0.08)] p-8">
-              <Loader2 className="w-10 h-10 animate-spin text-[#0085D0]" />
-              <p className="font-medium">{isRefining ? '正在优化解决方案...' : 'AI正在分析户型结构...'}</p>
+        <div className="p-6 flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+          {error ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4 bg-red-50/80 backdrop-blur-md rounded-3xl border border-red-200 shadow-[0_8px_32px_0_rgba(239,68,68,0.08)] p-8">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-2">
+                <span className="text-red-500 text-2xl">!</span>
+              </div>
+              <p className="font-medium text-red-600 text-center">{error}</p>
+              <button 
+                onClick={() => {
+                  setError(null);
+                  if (selectedPlan.imageUrl) {
+                    runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', false);
+                  }
+                }}
+                className="mt-4 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors text-sm font-medium"
+              >
+                重试
+              </button>
             </div>
           ) : analysisResult ? (
             <motion.div 
@@ -797,48 +902,110 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-[0_4px_16px_rgba(0,133,208,0.04)]">
-                <div className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <div className="w-1 h-4 bg-[#0085D0] rounded-full"></div>
-                  设备配置
-                </div>
-                <div className="flex items-end gap-2 mb-4">
-                  <div className="text-4xl font-bold text-[#0085D0] leading-none">
-                    {analysisResult.recommendedCount}
-                  </div>
-                  <div className="text-sm font-medium text-slate-500 mb-1">台路由器</div>
-                </div>
-                {analysisResult.equipment && (
-                  <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm">
-                    <div className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">选型建议</div>
-                    <div className="text-sm text-slate-700 leading-relaxed">{analysisResult.equipment}</div>
-                  </div>
-                )}
+              {/* Plan Tier Selector */}
+              <div className="flex bg-white/80 backdrop-blur-md rounded-xl p-1 border border-white/60 shadow-sm">
+                <button 
+                  onClick={() => {
+                    setPlanTier('economical');
+                    if (selectedPlan.imageUrl) {
+                      runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', false, 'economical');
+                    }
+                  }}
+                  className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${planTier === 'economical' ? 'bg-[#0085D0] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
+                >
+                  经济实惠型
+                </button>
+                <button 
+                  onClick={() => {
+                    setPlanTier('standard');
+                    if (selectedPlan.imageUrl) {
+                      runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', false, 'standard');
+                    }
+                  }}
+                  className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${planTier === 'standard' ? 'bg-[#0085D0] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
+                >
+                  均衡标准型
+                </button>
+                <button 
+                  onClick={() => {
+                    setPlanTier('premium');
+                    if (selectedPlan.imageUrl) {
+                      runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', false, 'premium');
+                    }
+                  }}
+                  className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${planTier === 'premium' ? 'bg-[#0085D0] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
+                >
+                  极致性能型
+                </button>
               </div>
 
-              {routers.length > 0 && (
-                <div className="bg-white/80 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-[0_4px_16px_rgba(0,133,208,0.04)]">
-                  <div className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <div className="w-1 h-4 bg-[#0085D0] rounded-full"></div>
-                    节点坐标说明
-                  </div>
-                  <div className="space-y-3">
-                    {routers.map((router, index) => (
-                      <div key={router.id} className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm flex flex-col gap-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-[#0085D0]">节点 {index + 1}</span>
-                          <span className="text-[10px] text-slate-500 bg-white/80 px-2 py-0.5 rounded-full border border-white/60">
-                            X: {Math.round(router.x)}% Y: {Math.round(router.y)}%
-                          </span>
-                        </div>
-                        <div className="text-sm text-slate-700">
-                          {router.locationDescription || '建议放置于此区域以保证覆盖。'}
+              <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-xl rounded-2xl p-5 border border-white/80 shadow-[0_8px_24px_rgba(0,133,208,0.08)] mb-6">
+                <div className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <div className="w-1 h-4 bg-[#0085D0] rounded-full"></div>
+                  解决方案综述
+                </div>
+                
+                {/* Key Metrics Cards */}
+                {analysisResult.solution?.keyMetrics && (
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {analysisResult.solution.keyMetrics.map((metric: any, idx: number) => (
+                      <div key={idx} className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm flex flex-col">
+                        <span className="text-xs text-slate-500 mb-1">{metric.label}</span>
+                        <div className="flex items-end gap-2">
+                          <span className="text-lg font-bold text-[#0085D0]">{metric.value}</span>
+                          {metric.trend && (
+                            <span className={`text-[10px] font-medium flex items-center ${metric.trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
+                              {metric.trend === 'up' ? '↗' : '↘'} {metric.trendValue}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
+                )}
+
+                <div className="flex items-end gap-2 mb-4">
+                  <div className="text-4xl font-bold text-[#0085D0] leading-none">
+                    {mainRouters.length}主{subRouters.length}从
+                  </div>
+                  <div className="text-sm font-medium text-slate-500 mb-1 ml-2">
+                    预估总价: <span className="text-[#0085D0] font-bold text-lg">¥{Math.max(0, totalPrice)}</span>
+                  </div>
                 </div>
-              )}
+                {analysisResult.equipment && (
+                  <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm mb-4">
+                    <div className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">选型建议</div>
+                    <div className="text-sm text-slate-700 leading-relaxed">{analysisResult.equipment}</div>
+                  </div>
+                )}
+
+                {/* Competitor Advantage & Radar Chart */}
+                {analysisResult.solution?.competitorAdvantage && (
+                  <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm">
+                    <h4 className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">方案优势对比</h4>
+                    <p className="text-sm text-slate-700 leading-relaxed mb-2">{analysisResult.solution.competitorAdvantage}</p>
+                    
+                    {/* Radar Chart Visualization */}
+                    {(analysisResult.solution as any).radarData && (analysisResult.solution as any).radarData.length > 0 && (
+                      <div className="h-48 w-full mt-2">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
+                          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={(analysisResult.solution as any).radarData}>
+                            <PolarGrid stroke="#e2e8f0" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10 }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                            <Radar name="本方案" dataKey="A" stroke="#0085D0" fill="#0085D0" fillOpacity={0.5} />
+                            <Radar name="传统方案" dataKey="B" stroke="#94a3b8" fill="#cbd5e1" fillOpacity={0.5} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                        <div className="flex justify-center gap-4 mt-1 text-[10px]">
+                          <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#0085D0]"></div>本方案</div>
+                          <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#cbd5e1]"></div>传统方案</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="bg-white/80 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-[0_4px_16px_rgba(0,133,208,0.04)]">
                 <div className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -878,6 +1045,28 @@ export default function App() {
                       <h4 className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">组网方案</h4>
                       <p className="text-sm text-slate-700 leading-relaxed">{analysisResult.solution.networkingPlan}</p>
                     </div>
+                    
+                    {routers.length > 0 && (
+                      <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm">
+                        <h4 className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">节点说明</h4>
+                        <div className="space-y-2 mt-2">
+                          {routers.map((router, index) => (
+                            <div key={router.id} className="flex flex-col gap-1 border-b border-slate-100 last:border-0 pb-2 last:pb-0">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-700">节点 {index + 1}</span>
+                                <span className="text-[10px] text-slate-500 bg-white/80 px-2 py-0.5 rounded-full border border-white/60">
+                                  X: {Math.round(router.x)}% Y: {Math.round(router.y)}%
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-600">
+                                {router.locationDescription || '建议放置于此区域以保证覆盖。'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm">
                       <h4 className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">套餐推荐</h4>
                       <p className="text-sm text-slate-700 leading-relaxed">{analysisResult.solution.packageRecommendation}</p>
@@ -898,10 +1087,10 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-slate-700">主路由 ({mainPrice}元/台)</span>
-                            <span className="text-xs text-slate-500">{scenario === 'enterprise' ? 'FTTO/FTTR 主网关' : '高性能主路由'}</span>
+                            <span className="text-xs text-slate-500">{scenario === 'enterprise' ? 'FTTO 主网关' : '高性能主路由'}</span>
                           </div>
                           <div className="flex items-center gap-3">
-                            <button onClick={() => handleRemoveRouterByType(true)} disabled={mainRouters.length === 0} className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors">-</button>
+                            <button onClick={() => handleRemoveRouterByType(true)} disabled={scenario === 'enterprise' ? mainRouters.length <= 1 : mainRouters.length === 0} className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors">-</button>
                             <span className="text-sm font-bold w-4 text-center">{mainRouters.length}</span>
                             <button onClick={() => handleAddRouterByType(true)} className="w-6 h-6 rounded-full bg-[#0085D0]/10 flex items-center justify-center text-[#0085D0] hover:bg-[#0085D0]/20 transition-colors">+</button>
                           </div>
@@ -910,7 +1099,7 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-slate-700">从路由 ({subPrice}元/台)</span>
-                            <span className="text-xs text-slate-500">{scenario === 'enterprise' ? 'FTTO/FTTR 从路由' : 'Mesh 扩展路由'}</span>
+                            <span className="text-xs text-slate-500">{scenario === 'enterprise' ? 'FTTO 从网关' : 'Mesh 扩展路由'}</span>
                           </div>
                           <div className="flex items-center gap-3">
                             <button onClick={() => handleRemoveRouterByType(false)} disabled={subRouters.length === 0} className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition-colors">-</button>
@@ -936,56 +1125,9 @@ export default function App() {
                       </div>
                     </div>
 
-                    {analysisResult.solution.competitorAdvantage && (
-                      <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm">
-                        <h4 className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">方案优势对比</h4>
-                        <p className="text-sm text-slate-700 leading-relaxed mb-4">{analysisResult.solution.competitorAdvantage}</p>
-                        
-                        {/* Radar Chart Visualization */}
-                        {(analysisResult.solution as any).radarData && (analysisResult.solution as any).radarData.length > 0 ? (
-                          <div className="h-56 w-full mt-2">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={(analysisResult.solution as any).radarData}>
-                                <PolarGrid stroke="#e2e8f0" />
-                                <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10 }} />
-                                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                                <Radar name="本方案" dataKey="A" stroke="#0085D0" fill="#0085D0" fillOpacity={0.5} />
-                                <Radar name="传统方案" dataKey="B" stroke="#94a3b8" fill="#cbd5e1" fillOpacity={0.5} />
-                              </RadarChart>
-                            </ResponsiveContainer>
-                            <div className="flex justify-center gap-4 mt-1 text-[10px]">
-                              <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#0085D0]"></div>本方案</div>
-                              <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#cbd5e1]"></div>传统方案</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-4 space-y-3">
-                            <div>
-                              <div className="flex justify-between text-xs text-slate-600 mb-1">
-                                <span>覆盖范围 (本方案)</span>
-                                <span className="font-bold text-[#0085D0]">98%</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                                <div className="h-full bg-[#0085D0] rounded-full" style={{ width: '98%' }}></div>
-                              </div>
-                            </div>
-                            <div>
-                              <div className="flex justify-between text-xs text-slate-600 mb-1">
-                                <span>覆盖范围 (传统方案)</span>
-                                <span className="font-bold text-slate-500">75%</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                                <div className="h-full bg-slate-400 rounded-full" style={{ width: '75%' }}></div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
                     <div className="bg-white/60 p-3 rounded-xl border border-white/80 shadow-sm">
                       <h4 className="text-xs font-bold text-[#0085D0] uppercase tracking-wider mb-1">资费说明</h4>
-                      <p className="text-sm text-slate-700 leading-relaxed">{analysisResult.solution.tariffDescription}</p>
+                      <p className="text-sm text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: analysisResult.solution.tariffDescription.replace(/\d+/g, '<span class="font-bold text-[#0085D0] bg-[#0085D0]/10 px-1 rounded">$&</span>') }}></p>
                     </div>
 
                     <div className="bg-[#0085D0]/5 p-3 rounded-xl border border-[#0085D0]/10">
@@ -995,6 +1137,13 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2 pb-6">
+                <button onClick={() => alert('方案已保存')} className="flex-1 bg-white border border-[#0085D0] text-[#0085D0] py-2.5 rounded-xl font-medium hover:bg-[#0085D0]/5 transition-colors shadow-sm">保存方案</button>
+                <button onClick={() => alert('已提交审核')} className="flex-1 bg-white border border-[#0085D0] text-[#0085D0] py-2.5 rounded-xl font-medium hover:bg-[#0085D0]/5 transition-colors shadow-sm">提交审核</button>
+                <button onClick={() => alert('已甩单执行')} className="flex-1 bg-amber-500 text-white py-2.5 rounded-xl font-medium hover:bg-amber-600 transition-colors shadow-md">甩单执行</button>
+              </div>
 
             </motion.div>
           ) : (
@@ -1009,12 +1158,6 @@ export default function App() {
 
       {/* Bottom Bar: Upload & Customer Requirements */}
       <div className="p-4 border-t border-white/60 bg-white/60 backdrop-blur-md shrink-0 z-20 flex items-center gap-4">
-        <label className="flex-shrink-0 flex items-center justify-center gap-2 py-3 px-6 bg-[#0085D0] hover:bg-[#0070b0] text-white rounded-xl cursor-pointer transition-colors shadow-md">
-          <Upload className="w-5 h-5" />
-          <span className="font-medium">上传户型图</span>
-          <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-        </label>
-        
         <div className="flex-1 bg-white/80 backdrop-blur-md rounded-xl p-2 border border-white/60 shadow-sm flex items-center gap-2">
           <div className="pl-3 text-sm font-bold text-slate-800 whitespace-nowrap flex items-center gap-2">
             <div className="w-1 h-4 bg-[#0085D0] rounded-full"></div>
@@ -1066,18 +1209,25 @@ export default function App() {
           >
             <Mic className="w-5 h-5" />
           </button>
-          <button 
-            onClick={() => {
-              if (selectedPlan.imageUrl) {
-                runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!analysisResult);
-              }
-            }}
-            disabled={isAnalyzing || !selectedPlan.imageUrl}
-            className="bg-[#0085D0] hover:bg-[#0070b0] text-white px-6 py-2.5 rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
-          >
-            {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : '开始分析'}
-          </button>
         </div>
+
+        <label className="flex-shrink-0 flex items-center justify-center gap-2 py-3 px-6 bg-white border border-[#0085D0] text-[#0085D0] hover:bg-[#0085D0]/5 rounded-xl cursor-pointer transition-colors shadow-sm">
+          <Upload className="w-5 h-5" />
+          <span className="font-medium">上传户型图</span>
+          <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+        </label>
+        
+        <button 
+          onClick={() => {
+            if (selectedPlan.imageUrl) {
+              runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!analysisResult);
+            }
+          }}
+          disabled={isAnalyzing || isRefining || !selectedPlan.imageUrl}
+          className="bg-[#0085D0] hover:bg-[#0070b0] text-white px-6 py-3 rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
+        >
+          {isAnalyzing || isRefining ? <Loader2 className="w-5 h-5 animate-spin" /> : (analysisResult ? '重新分析' : '开始分析')}
+        </button>
       </div>
     </div>
   );
