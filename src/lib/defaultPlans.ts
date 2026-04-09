@@ -2,9 +2,13 @@ export interface FloorPlan {
   id: string;
   name: string;
   imageUrl: string;
+  originalImage?: string; // Store original image for editing
+  aspectRatio?: number; // Store original aspect ratio to preserve physical dimensions
   type: 'default' | 'uploaded';
   widthMeters?: number;
-  scenario: 'home' | 'enterprise';
+  scenario: 'home' | 'enterprise' | 'office' | 'hotel' | 'shop' | 'hospital';
+  analysisResult?: any;
+  routers?: any[];
 }
 
 function generateSvg(type: number, widthMeters: number): string {
@@ -313,13 +317,46 @@ function generateSvg(type: number, widthMeters: number): string {
         <text x="500" y="400" font-family="sans-serif" font-size="20" fill="#64748b" text-anchor="middle">客厅</text>
       `;
       break;
+    case 14: // Hotel Room
+      content = `
+        <rect x="200" y="50" width="400" height="500" fill="${floor}" filter="url(#drop-shadow)"/>
+        <path d="M200,50 L600,50 L600,550 L200,550 Z M200,200 L350,200 M350,200 L350,50" fill="none" stroke="${wall}" stroke-width="12" stroke-linecap="square"/>
+        <rect x="220" y="70" width="110" height="110" fill="${bathFloor}"/>
+        <text x="275" y="135" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">卫浴</text>
+        <text x="400" y="350" font-family="sans-serif" font-size="24" fill="${textFill}" text-anchor="middle">客房区</text>
+        <rect x="450" y="250" width="120" height="150" fill="none" stroke="${furniture}" stroke-width="3"/>
+      `;
+      break;
+    case 15: // Shop
+      content = `
+        <rect x="100" y="100" width="600" height="400" fill="${floor}" filter="url(#drop-shadow)"/>
+        <path d="M100,100 L700,100 L700,500 L100,500 Z M100,400 L300,400 M300,400 L300,500" fill="none" stroke="${wall}" stroke-width="12" stroke-linecap="square"/>
+        <text x="400" y="250" font-family="sans-serif" font-size="28" fill="${textFill}" text-anchor="middle">商品展示区</text>
+        <text x="200" y="460" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">仓库/后场</text>
+        <rect x="350" y="350" width="200" height="40" fill="none" stroke="${furniture}" stroke-width="3"/>
+        <text x="450" y="375" font-family="sans-serif" font-size="16" fill="${textFill}" text-anchor="middle">收银台</text>
+      `;
+      break;
+    case 16: // Hospital Clinic
+      content = `
+        <rect x="50" y="50" width="700" height="500" fill="${floor}" filter="url(#drop-shadow)"/>
+        <path d="M50,50 L750,50 L750,550 L50,550 Z M50,250 L750,250 M50,350 L750,350 M250,50 L250,250 M500,50 L500,250 M250,350 L250,550 M500,350 L500,550" fill="none" stroke="${wall}" stroke-width="12" stroke-linecap="square"/>
+        <text x="400" y="310" font-family="sans-serif" font-size="24" fill="${textFill}" text-anchor="middle">公共走廊 / 候诊区</text>
+        <text x="150" y="160" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">诊室 1</text>
+        <text x="375" y="160" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">诊室 2</text>
+        <text x="625" y="160" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">诊室 3</text>
+        <text x="150" y="460" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">检查室 A</text>
+        <text x="375" y="460" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">检查室 B</text>
+        <text x="625" y="460" font-family="sans-serif" font-size="20" fill="${textFill}" text-anchor="middle">护士站</text>
+      `;
+      break;
   }
   
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
     ${defs}
     ${type !== 12 && type !== 13 ? `<rect width="100%" height="100%" fill="${bg}"/>\n    <rect width="100%" height="100%" fill="url(#grid)"/>` : ''}
     ${content}
-  </svg>`;
+  </svg>`.replace(/font-family="sans-serif"/g, 'font-family="\'Microsoft YaHei\', sans-serif"');
   
   return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
 }
@@ -334,10 +371,13 @@ export const defaultFloorPlans: FloorPlan[] = [
   { id: '9', name: 'L型户型', imageUrl: generateSvg(9, 12.0), type: 'default', widthMeters: 12.0, scenario: 'home' },
   { id: '10', name: '大平层', imageUrl: generateSvg(10, 18.0), type: 'default', widthMeters: 18.0, scenario: 'home' },
   { id: '13', name: '3D 户型图示例', imageUrl: generateSvg(13, 10.0), type: 'default', widthMeters: 10.0, scenario: 'home' },
-  { id: '6', name: '小型办公室', imageUrl: generateSvg(6, 15.0), type: 'default', widthMeters: 15.0, scenario: 'enterprise' },
-  { id: '7', name: '中型开放办公区', imageUrl: generateSvg(7, 25.0), type: 'default', widthMeters: 25.0, scenario: 'enterprise' },
+  { id: '6', name: '小型办公室', imageUrl: generateSvg(6, 15.0), type: 'default', widthMeters: 15.0, scenario: 'office' },
+  { id: '7', name: '中型开放办公区', imageUrl: generateSvg(7, 25.0), type: 'default', widthMeters: 25.0, scenario: 'office' },
   { id: '11', name: '大型园区', imageUrl: generateSvg(11, 100.0), type: 'default', widthMeters: 100.0, scenario: 'enterprise' },
   { id: '12', name: 'CAD 蓝图示例', imageUrl: generateSvg(12, 24.0), type: 'default', widthMeters: 24.0, scenario: 'enterprise' },
+  { id: '14', name: '标准客房', imageUrl: generateSvg(14, 6.0), type: 'default', widthMeters: 6.0, scenario: 'hotel' },
+  { id: '15', name: '临街商铺', imageUrl: generateSvg(15, 8.0), type: 'default', widthMeters: 8.0, scenario: 'shop' },
+  { id: '16', name: '门诊区域', imageUrl: generateSvg(16, 30.0), type: 'default', widthMeters: 30.0, scenario: 'hospital' },
 ];
 
 export const defaultAnalyses: Record<string, any> = {
@@ -486,6 +526,46 @@ export const defaultAnalyses: Record<string, any> = {
       priority: '3D户型图展示了立体空间结构，重点覆盖卧室和客餐厅区域。',
       strategy: '利用Mesh组网，主节点放置在客厅，子节点放置在卧室过道或内部，利用3D空间反射优化信号。',
       summary: '双节点Mesh组网结合3D空间特性，实现全屋信号的立体覆盖。'
+    }
+  },
+  '14': { 
+    recommendedCount: 1, 
+    equipment: '1主 (联通FTTO企业级面板AP)',
+    routers: [
+      {id: 'r1', x: 50, y: 50, type: 'ftto-main', locationDescription: '客房中心，提供无死角覆盖'}
+    ], 
+    explanation: {
+      priority: '酒店客房重点保障单房间内的信号满格和高带宽体验。',
+      strategy: '采用入室面板AP部署，避免走廊AP穿墙带来的信号衰减。',
+      summary: '单房间单AP是高星级酒店的标准配置。'
+    }
+  },
+  '15': { 
+    recommendedCount: 2, 
+    equipment: '1主1从 (联通FTTO企业级网关+AP)',
+    routers: [
+      {id: 'r1', x: 50, y: 40, type: 'ftto-main', locationDescription: '商品展示区中心，满足顾客高密接入'},
+      {id: 'r2', x: 20, y: 80, type: 'ftto-sub', locationDescription: '仓库/后场，保障店员办公及库存管理'}
+    ], 
+    explanation: {
+      priority: '商铺环境需兼顾顾客体验和内部办公/收银系统的稳定性。',
+      strategy: '展示区部署主网关满足高密接入，后场部署从网关保障内部业务。',
+      summary: '主从架构完美契合商铺前后台不同的网络需求。'
+    }
+  },
+  '16': { 
+    recommendedCount: 4, 
+    equipment: '1主3从 (联通FTTO企业级网关+AP)',
+    routers: [
+      {id: 'r1', x: 50, y: 50, type: 'ftto-main', locationDescription: '公共走廊/候诊区，满足大量患者接入'},
+      {id: 'r2', x: 25, y: 25, type: 'ftto-sub', locationDescription: '诊室区域，保障医生办公系统稳定'},
+      {id: 'r3', x: 75, y: 25, type: 'ftto-sub', locationDescription: '诊室区域，保障医生办公系统稳定'},
+      {id: 'r4', x: 50, y: 80, type: 'ftto-sub', locationDescription: '检查室/护士站，保障医疗设备联网'}
+    ], 
+    explanation: {
+      priority: '医院门诊区人流量大，且医疗设备对网络稳定性要求极高。',
+      strategy: '走廊候诊区部署高密主网关，各诊室和护士站按需部署从网关，确保业务隔离和稳定。',
+      summary: '多节点高密部署满足医院复杂场景的高标准要求。'
     }
   }
 };

@@ -9,8 +9,8 @@ export function drawHeatmap(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  let width = 200;
-  let height = 150;
+  let width = 300;
+  let height = 225;
 
   if (imageElement && imageElement.naturalWidth > 0 && imageElement.naturalHeight > 0) {
     const aspect = imageElement.naturalWidth / imageElement.naturalHeight;
@@ -112,6 +112,42 @@ export function drawHeatmap(
     // Combine signals (take max)
     for (let i = 0; i < width * height; i++) {
        signalMap[i] = Math.max(signalMap[i], tempSignal[i]);
+    }
+  }
+
+  // Apply a 2-pass box blur to smooth the signal map and reduce jagged edges
+  const blurRadius = 3;
+  const tempBlur = new Float32Array(width * height);
+  
+  // Horizontal blur pass
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      let count = 0;
+      for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+        const nx = x + dx;
+        if (nx >= 0 && nx < width) {
+          sum += signalMap[y * width + nx];
+          count++;
+        }
+      }
+      tempBlur[y * width + x] = sum / count;
+    }
+  }
+  
+  // Vertical blur pass
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      let sum = 0;
+      let count = 0;
+      for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+        const ny = y + dy;
+        if (ny >= 0 && ny < height) {
+          sum += tempBlur[ny * width + x];
+          count++;
+        }
+      }
+      signalMap[y * width + x] = sum / count;
     }
   }
 
