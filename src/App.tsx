@@ -3,7 +3,7 @@ import { Wifi, Upload, Plus, Trash2, Map, Activity, Info, Loader2, Radio, Networ
 import { motion, AnimatePresence } from 'motion/react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import Markdown from 'react-markdown';
-import { FloorPlan, defaultFloorPlans, defaultAnalyses } from './lib/defaultPlans';
+import { FloorPlan, defaultFloorPlans as initialDefaultFloorPlans, defaultAnalyses } from './lib/defaultPlans';
 import { RouterNode, AnalysisResult, analyzeFloorPlan, generateFloorPlanImage, editFloorPlanImage } from './lib/gemini';
 import { ImageEditorModal } from './components/ImageEditorModal';
 import { drawHeatmap } from './lib/heatmap';
@@ -100,8 +100,9 @@ const LoadingOverlay = ({ isAnalyzing }: { isAnalyzing: boolean }) => {
 };
 
 export default function App() {
+  const [defaultFloorPlans, setDefaultFloorPlans] = useState<FloorPlan[]>(initialDefaultFloorPlans);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<FloorPlan>(defaultFloorPlans[0]);
+  const [selectedPlan, setSelectedPlan] = useState<FloorPlan>(initialDefaultFloorPlans[0]);
   const [routers, setRouters] = useState<RouterNode[]>(defaultAnalyses['1'].routers);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -490,8 +491,9 @@ export default function App() {
     });
   };
 
-  const runAnalysis = async (imageUrl: string, mimeType: string, isRefine = false) => {
+  const runAnalysis = async (imageUrl: string, mimeType: string, isRefine = false, targetPlanId?: string) => {
     const activeTier = 'premium'; // Always fetch premium from AI
+    const currentPlanId = targetPlanId || selectedPlan.id;
     setError(null);
     
     // Create a robust pseudo-hash for the image to ensure same images hit the cache
@@ -569,15 +571,17 @@ export default function App() {
       }));
       
       // Update in history
-      const index = defaultFloorPlans.findIndex(p => p.id === selectedPlan.id);
-      if (index !== -1) {
-        defaultFloorPlans[index] = { 
-          ...defaultFloorPlans[index], 
-          widthMeters: newWidthMeters,
-          analysisResult: finalResult,
-          routers: finalResult.routers
-        };
-      }
+      setDefaultFloorPlans(prev => prev.map(p => {
+        if (p.id === currentPlanId) {
+          return {
+            ...p,
+            widthMeters: newWidthMeters,
+            analysisResult: finalResult,
+            routers: finalResult.routers
+          };
+        }
+        return p;
+      }));
       
       // Auto adjust to 50% ratio
       setRightSidebarWidth(window.innerWidth / 2);
@@ -655,9 +659,11 @@ export default function App() {
         widthMeters: 10,
         scenario: scenario
       };
+      // Add custom uploaded plan to the list so user can select it later
+      setDefaultFloorPlans(prev => [newPlan, ...prev]);
       setSelectedPlan(newPlan);
       // Send grayscale image to AI to reduce parsing pressure
-      await runAnalysis(grayscaleBase64, mimeType, !!feedback.trim());
+      await runAnalysis(grayscaleBase64, mimeType, !!feedback.trim(), newPlan.id);
     };
     reader.onerror = () => {
       setError('文件读取失败');
@@ -680,7 +686,7 @@ export default function App() {
         }
       }
       
-      runAnalysis(imageToSend, mimeType);
+      runAnalysis(imageToSend, mimeType, false, selectedPlan.id);
     }
   };
 
@@ -1270,7 +1276,7 @@ export default function App() {
                 onClick={() => {
                   setError(null);
                   if (selectedPlan.imageUrl) {
-                    runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!feedback.trim());
+                    runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!feedback.trim(), selectedPlan.id);
                   }
                 }}
                 className="mt-4 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors text-sm font-medium"
@@ -1615,7 +1621,7 @@ export default function App() {
             className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-slate-700 focus:outline-none focus:ring-0"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && selectedPlan.imageUrl) {
-                runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!feedback.trim());
+                runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!feedback.trim(), selectedPlan.id);
               }
             }}
           />
@@ -1671,7 +1677,7 @@ export default function App() {
         <button 
           onClick={() => {
             if (selectedPlan.imageUrl) {
-              runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!analysisResult || !!feedback.trim());
+              runAnalysis(selectedPlan.imageUrl, selectedPlan.imageUrl.startsWith('data:image/svg+xml') ? 'image/svg+xml' : 'image/jpeg', !!analysisResult || !!feedback.trim(), selectedPlan.id);
             }
           }}
           disabled={isAnalyzing || isRefining || !selectedPlan.imageUrl}
@@ -1824,7 +1830,7 @@ export default function App() {
                     
                     const newPlan: FloorPlan = {
                       id: Date.now().toString(),
-                      name: `AI 生成户型图 ${new Date().toLocaleTimeString()}`,
+                      name: `AI生成 ${new Date().toLocaleTimeString()}`,
                       imageUrl: result.imageUrl,
                       originalImage: result.imageUrl,
                       type: 'uploaded',
@@ -1832,16 +1838,16 @@ export default function App() {
                       widthMeters: result.widthMeters
                     };
                     
-                    // Add to defaultFloorPlans so it shows up in history
-                    defaultFloorPlans.push(newPlan);
+                    // Add to defaultFloorPlans so it shows up in history using setState
+                    setDefaultFloorPlans(prev => [newPlan, ...prev]);
                     
                     setSelectedPlan(newPlan);
-                    setRouters([]);
-                    setAnalysisResult(null);
-                    setFeedback('');
                     setShowGenerateModal(false);
                     setGenDescription('');
                     setGenPhoto(null);
+                    
+                    // Trigger analysis immediately after generating
+                    await runAnalysis(result.imageUrl, mimeType || 'image/jpeg', false, newPlan.id);
                   } catch (err: any) {
                     setGenError('生成失败: ' + err.message);
                   } finally {

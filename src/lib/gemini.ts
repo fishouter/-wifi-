@@ -646,16 +646,17 @@ ${scenario !== 'home' ? '【政企/商业模式要求】\n- 请推荐联通FTTO�
 
   try {
     return JSON.parse(text);
-  } catch (parseError) {
-    console.error("JSON Parse Error. Raw text:", text);
-    console.error(parseError);
-    
+  } catch (parseError: any) {
     let fixedText = fixJsonString(text);
     
     try {
-      return JSON.parse(fixedText);
-    } catch (e1) {
-      throw new Error(`AI 返回的数据格式有误，无法解析。请重试或修改提示词。详细错误: ${parseError}`);
+      const result = JSON.parse(fixedText);
+      console.warn("JSON Parse Error recovered successfully using fixJsonString.");
+      return result;
+    } catch (e1: any) {
+      console.error("JSON Parse Error. Raw text:", text);
+      console.error(parseError);
+      throw new Error(`AI 返回的数据格式有误，无法解析。请重试或修改提示词。详细错误: ${parseError.message} | 修复后解析错误: ${e1.message} | 修复后文本: ${fixedText}`);
     }
   }
 }
