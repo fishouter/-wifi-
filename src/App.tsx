@@ -120,7 +120,7 @@ export default function App() {
   const analysisCache = useRef<Record<string, any>>({});
 
   const [scenario, setScenario] = useState<'home' | 'enterprise' | 'office' | 'hotel' | 'shop' | 'hospital'>('home');
-  const [modelType, setModelType] = useState<'gemini-flash' | 'gemini-pro' | 'qwen'>('gemini-flash');
+  const [modelType, setModelType] = useState<'gemini-flash' | 'gemini-pro' | 'qwen' | 'glm'>('gemini-flash');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -340,7 +340,35 @@ export default function App() {
     }
     setError(null);
     if (plan.type === 'default') {
-      const analysis = defaultAnalyses[plan.id];
+      const analysis = defaultAnalyses[plan.id] || {
+        recommendedCount: 2,
+        equipment: '推荐使用2台FTTO企业级主/从路由器',
+        routers: [
+          {id: 'r1', x: 30, y: 50, type: 'ftto-main', locationDescription: '主干区域'},
+          {id: 'r2', x: 70, y: 50, type: 'ftto-sub', locationDescription: '分支区域'}
+        ],
+        explanation: {
+          priority: '该场景需要保证高并发接入与稳定性。',
+          strategy: '建议在核心区域部署主节点，在人员密集区部署子节点，确保信号无死角覆盖。',
+          summary: '两节点组网方案兼顾了覆盖与成本，是该场景的高性价比选择。'
+        },
+        solution: {
+          keyMetrics: [
+            {"label": "覆盖率", "value": "98%"},
+            {"label": "最高并发", "value": "150台终端"},
+            {"label": "漫游延迟", "value": "<30ms"},
+            {"label": "施工周期", "value": "1天"}
+          ],
+          radarData: [
+            {"subject": "覆盖范围 (Coverage)", "A": 90, "fullMark": 100},
+            {"subject": "带机并发 (Capacity)", "A": 85, "fullMark": 100},
+            {"subject": "信号质量 (Quality)", "A": 95, "fullMark": 100},
+            {"subject": "漫游体验 (Roaming)", "A": 88, "fullMark": 100},
+            {"subject": "投资成本 (Cost)", "A": 80, "fullMark": 100}
+          ]
+        }
+      };
+      setBaseAnalysisResult(analysis);
       setAnalysisResult(analysis);
       setRouters(analysis.routers);
     } else if (plan.analysisResult) {
@@ -557,10 +585,15 @@ export default function App() {
       }
       
       let newWidthMeters = selectedPlan.widthMeters;
-      if (result.areaSquareMeters && !selectedPlan.widthMeters) {
+      if (result.areaSquareMeters && (!selectedPlan.widthMeters || selectedPlan.widthMeters === 10)) {
         newWidthMeters = Math.sqrt(result.areaSquareMeters! * aspectRatio);
-      } else if (result.widthMeters && !selectedPlan.widthMeters) {
+      } else if (result.widthMeters && (!selectedPlan.widthMeters || selectedPlan.widthMeters === 10)) {
         newWidthMeters = result.widthMeters;
+      }
+      
+      // Basic common sense check - apartments are rarely less than 3 meters or more than 100 meters wide
+      if (!newWidthMeters || newWidthMeters < 3 || newWidthMeters > 200) {
+        newWidthMeters = 10;
       }
       
       setSelectedPlan(prev => ({ 
@@ -653,10 +686,9 @@ export default function App() {
       
       const newPlan: FloorPlan = {
         id: 'uploaded-' + Date.now(),
-        name: file.name,
+        name: file.name.replace(/\.[^/.]+$/, ""),
         imageUrl: base64, // Keep original color image for UI
         type: 'uploaded',
-        widthMeters: 10,
         scenario: scenario
       };
       // Add custom uploaded plan to the list so user can select it later
@@ -717,7 +749,13 @@ export default function App() {
   const handlePointerUp = (e: React.PointerEvent) => {
     setDraggingId(null);
     setIsPanning(false);
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    try {
+      if (e.target instanceof Element && e.target.hasPointerCapture(e.pointerId)) {
+        e.target.releasePointerCapture(e.pointerId);
+      } else if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch(err) {} 
   };
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -864,13 +902,14 @@ export default function App() {
                     </div>
                     <select 
                       value={modelType}
-                      onChange={(e) => setModelType(e.target.value as 'gemini-flash' | 'gemini-pro' | 'qwen')}
+                      onChange={(e) => setModelType(e.target.value as 'gemini-flash' | 'gemini-pro' | 'qwen' | 'glm')}
                       className="w-full bg-white/80 border border-white/80 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0085D0]/50 shadow-sm appearance-none"
                       style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`, backgroundPosition: `right 0.5rem center`, backgroundRepeat: `no-repeat`, backgroundSize: `1.5em 1.5em`, paddingRight: `2.5rem` }}
                     >
                       <option value="gemini-flash">Gemini 3 Flash (默认)</option>
                       <option value="gemini-pro">Gemini 3.1 Pro</option>
                       <option value="qwen">通义千问 (Qwen VL)</option>
+                      <option value="glm">智谱清言 (GLM-4V)</option>
                     </select>
                   </div>
                 )}
@@ -1083,7 +1122,7 @@ export default function App() {
             {/* Canvas Container */}
             <div 
               ref={containerRef}
-              className="relative shadow-[0_4px_24px_rgba(0,133,208,0.1)] border border-white/80 touch-none bg-white/80 backdrop-blur-md origin-center rounded-2xl overflow-hidden"
+              className="relative shadow-[0_4px_24px_rgba(0,133,208,0.1)] border border-white/80 touch-none select-none bg-white/80 backdrop-blur-md origin-center rounded-2xl overflow-hidden"
               style={{ 
                 width: `${fitWidth}px`, 
                 height: `${fitHeight}px`,
@@ -1149,6 +1188,23 @@ export default function App() {
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     setDraggingId(router.id);
+                    try {
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    } catch(err) {}
+                  }}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    setDraggingId(null);
+                    try {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    } catch(err) {}
+                  }}
+                  onPointerCancel={(e) => {
+                    e.stopPropagation();
+                    setDraggingId(null);
+                    try {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    } catch(err) {}
                   }}
                 >
                   <div className={`w-full h-full rounded-full flex items-center justify-center text-white relative z-10 ${

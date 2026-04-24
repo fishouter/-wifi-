@@ -68,6 +68,49 @@ async function startServer() {
     }
   });
 
+  app.post("/api/glm", async (req, res) => {
+    try {
+      let glmUrl = process.env.VITE_GLM_URL || 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+      let glmApiKey = process.env.VITE_GLM_API_KEY;
+
+      if (glmUrl) glmUrl = glmUrl.replace(/^["']|["']$/g, '');
+      if (glmApiKey) glmApiKey = glmApiKey.replace(/^["']|["']$/g, '');
+
+      console.log("GLM API Request to:", glmUrl);
+
+      if (!glmApiKey) {
+        return res.status(500).json({ error: "GLM API configuration missing" });
+      }
+
+      const headers: any = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${glmApiKey}`
+      };
+
+      const response = await fetch(glmUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(req.body)
+      });
+
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        if (!response.ok) {
+          return res.status(response.status).json({ error: text || `GLM API Error: ${response.status}` });
+        }
+        throw new Error(`Invalid JSON from GLM API: ${text.substring(0, 100)}...`);
+      }
+      
+      res.status(response.status).json(data);
+    } catch (error: any) {
+      console.error("Proxy error (GLM):", error);
+      res.status(500).json({ error: error.message || "Proxy error" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -371,13 +371,42 @@ export const defaultFloorPlans: FloorPlan[] = [
   { id: '9', name: 'L型户型', imageUrl: generateSvg(9, 12.0), type: 'default', widthMeters: 12.0, scenario: 'home' },
   { id: '10', name: '大平层', imageUrl: generateSvg(10, 18.0), type: 'default', widthMeters: 18.0, scenario: 'home' },
   { id: '13', name: '3D 户型图示例', imageUrl: generateSvg(13, 10.0), type: 'default', widthMeters: 10.0, scenario: 'home' },
+  
+  // Office Floor Plans (5+ total)
   { id: '6', name: '小型办公室', imageUrl: generateSvg(6, 15.0), type: 'default', widthMeters: 15.0, scenario: 'office' },
   { id: '7', name: '中型开放办公区', imageUrl: generateSvg(7, 25.0), type: 'default', widthMeters: 25.0, scenario: 'office' },
+  { id: 'off_3', name: '独立办公室集群', imageUrl: generateSvg(6, 20.0), type: 'default', widthMeters: 20.0, scenario: 'office' },
+  { id: 'off_4', name: '联合办公空间', imageUrl: generateSvg(7, 30.0), type: 'default', widthMeters: 30.0, scenario: 'office' },
+  { id: 'off_5', name: '创意工作室 (L型)', imageUrl: generateSvg(9, 18.0), type: 'default', widthMeters: 18.0, scenario: 'office' },
+  { id: 'off_6', name: '高管行政层', imageUrl: generateSvg(4, 22.0), type: 'default', widthMeters: 22.0, scenario: 'office' },
+
+  // Enterprise / Park Plans (5+ total)
   { id: '11', name: '大型园区', imageUrl: generateSvg(11, 100.0), type: 'default', widthMeters: 100.0, scenario: 'enterprise' },
   { id: '12', name: 'CAD 蓝图示例', imageUrl: generateSvg(12, 24.0), type: 'default', widthMeters: 24.0, scenario: 'enterprise' },
+  { id: 'ent_3', name: '物流仓储中心', imageUrl: generateSvg(11, 80.0), type: 'default', widthMeters: 80.0, scenario: 'enterprise' },
+  { id: 'ent_4', name: '研发车间厂房', imageUrl: generateSvg(11, 60.0), type: 'default', widthMeters: 60.0, scenario: 'enterprise' },
+  { id: 'ent_5', name: '企业多媒体展厅', imageUrl: generateSvg(10, 35.0), type: 'default', widthMeters: 35.0, scenario: 'enterprise' },
+
+  // Hotel Plans (5+ total)
   { id: '14', name: '标准客房', imageUrl: generateSvg(14, 6.0), type: 'default', widthMeters: 6.0, scenario: 'hotel' },
+  { id: 'hot_2', name: '豪华套房', imageUrl: generateSvg(2, 10.0), type: 'default', widthMeters: 10.0, scenario: 'hotel' },
+  { id: 'hot_3', name: '行政酒廊/大堂', imageUrl: generateSvg(7, 30.0), type: 'default', widthMeters: 30.0, scenario: 'hotel' },
+  { id: 'hot_4', name: '酒店长走廊', imageUrl: generateSvg(8, 40.0), type: 'default', widthMeters: 40.0, scenario: 'hotel' },
+  { id: 'hot_5', name: '全日制餐厅', imageUrl: generateSvg(10, 25.0), type: 'default', widthMeters: 25.0, scenario: 'hotel' },
+
+  // Shop / Retail Plans (5+ total)
   { id: '15', name: '临街商铺', imageUrl: generateSvg(15, 8.0), type: 'default', widthMeters: 8.0, scenario: 'shop' },
+  { id: 'shp_2', name: '大型商超便民店', imageUrl: generateSvg(10, 25.0), type: 'default', widthMeters: 25.0, scenario: 'shop' },
+  { id: 'shp_3', name: '精品咖啡馆', imageUrl: generateSvg(15, 12.0), type: 'default', widthMeters: 12.0, scenario: 'shop' },
+  { id: 'shp_4', name: '网红餐饮店', imageUrl: generateSvg(9, 15.0), type: 'default', widthMeters: 15.0, scenario: 'shop' },
+  { id: 'shp_5', name: '连锁服装门市', imageUrl: generateSvg(8, 18.0), type: 'default', widthMeters: 18.0, scenario: 'shop' },
+
+  // Hospital Plans (5+ total)
   { id: '16', name: '门诊区域', imageUrl: generateSvg(16, 30.0), type: 'default', widthMeters: 30.0, scenario: 'hospital' },
+  { id: 'hos_2', name: '住院部病房区', imageUrl: generateSvg(8, 35.0), type: 'default', widthMeters: 35.0, scenario: 'hospital' },
+  { id: 'hos_3', name: '急诊大厅', imageUrl: generateSvg(7, 40.0), type: 'default', widthMeters: 40.0, scenario: 'hospital' },
+  { id: 'hos_4', name: '检验科/化验室', imageUrl: generateSvg(6, 20.0), type: 'default', widthMeters: 20.0, scenario: 'hospital' },
+  { id: 'hos_5', name: 'VIP特需病房', imageUrl: generateSvg(3, 14.0), type: 'default', widthMeters: 14.0, scenario: 'hospital' },
 ];
 
 export const defaultAnalyses: Record<string, any> = {

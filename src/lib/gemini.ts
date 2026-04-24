@@ -213,7 +213,7 @@ export async function analyzeFloorPlan(
   imageBase64: string, 
   mimeType: string, 
   scenario: 'home' | 'enterprise' | 'office' | 'hotel' | 'shop' | 'hospital' = 'home',
-  modelType: 'gemini-flash' | 'gemini-pro' | 'qwen' = 'gemini-flash',
+  modelType: 'gemini-flash' | 'gemini-pro' | 'qwen' | 'glm' = 'gemini-flash',
   enterpriseName: string = '',
   userFeedback: string = '',
   previousResult: any = null,
@@ -311,10 +311,62 @@ ${scenario !== 'home' ? '【政企/商业模式要求】\n- 请推荐联通FTTO�
   "areaSquareMeters": 物理面积（平方米，数字）
 }
 必须严格返回合法的JSON格式，不要包含其他多余的文本或Markdown标记。
+**雷达图数据要求：**
+\`\`\`json
+{
+  "solution": {
+    "radarData": [
+        {"subject": "覆盖范围 (Coverage)", "A": 90, "fullMark": 100},
+        {"subject": "带机并发 (Capacity)", "A": 85, "fullMark": 100},
+        {"subject": "信号质量 (Quality)", "A": 95, "fullMark": 100},
+        {"subject": "漫游体验 (Roaming)", "A": 88, "fullMark": 100},
+        {"subject": "投资成本 (Cost)", "A": 80, "fullMark": 100}
+      ]
+  }
+}
+\`\`\`
+**无论是什么户型，雷达图的 subject 必须是上方列出的5个名称。无论任何情况都要输出这5项雷达数据！**
 **极其重要：请确保返回的JSON格式绝对正确！所有的字符串值内部如果需要使用引号，请务必使用单引号（'）或者中文引号（“”），绝对不要使用未转义的英文双引号（"），否则会导致JSON解析失败！**
 **警告：严禁在任何字段中生成重复的短语、无意义的词语循环（如重复的“OK”、“结束”、“设备总价”等）。所有文本字段必须简明扼要，直接输出核心内容，不要添加任何解释性、确认性或礼貌性的废话。**`;
 
   let text = "{}";
+
+  if (modelType === 'glm') {
+    try {
+      const response = await fetch('/api/glm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'glm-4v-plus',
+          temperature: 0.2,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn(`GLM API Error: ${response.status} ${errText}. Falling back to Gemini.`);
+        throw new Error(`GLM API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      text = data.choices?.[0]?.message?.content || "{}";
+      text = text.replace(/\`\`\`json/gi, '').replace(/\`\`\`/gi, '').trim();
+    } catch (e) {
+      console.warn("GLM API failed, falling back to Gemini.", e);
+      modelType = 'gemini-flash'; 
+    }
+  }
 
   if (modelType === 'qwen') {
     try {
